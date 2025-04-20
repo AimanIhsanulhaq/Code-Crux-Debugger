@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>XML Debugger</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f2f2f2;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      font-family: 'Courier New', Courier, monospace;
+    }
+
+    .wrapper {
+      border: 2px solid #000;
+      padding: 10px;
+    }
+
+    .debugger {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .input-section, .output-section {
+      flex: 1;
+      border: 2px solid;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      background-color: #fff;
+    }
+
+    .input-section {
+      background-color: #d9b6ff;
+    }
+
+    .output-section {
+      background-color: #ffffff;
+    }
+
+    textarea {
+      width: 100%;
+      height: 300px;
+      padding: 10px;
+      font-size: 14px;
+      font-family: Consolas, monospace;
+      resize: none;
+      box-sizing: border-box;
+    }
+
+    .controls {
+      margin-bottom: 10px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .controls input[type="text"], .controls input[type="file"] {
+      flex: 1;
+      padding: 5px;
+    }
+
+    .controls button {
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+
+    .errors {
+      margin-top: 20px;
+      border: 2px solid;
+      background-color: #fa949b;
+      padding: 10px;
+      white-space: pre-wrap;
+      font-family: Consolas, monospace;
+    }
+
+    .highlight-line {
+      background-color: yellow !important;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Debugger</h2>
+
+<div class="wrapper">
+
+  <!-- File Upload and Editor Controls -->
+  <div class="controls">
+    <input type="file" accept=".xml" onchange="handleFileUpload(event)" />
+    <button onclick="copyInput()">Copy</button>
+    <button onclick="undo()">Undo</button>
+    <button onclick="redo()">Redo</button>
+  </div>
+
+  <div class="debugger">
+    <!-- Input XML -->
+    <div class="input-section">
+      <div class="controls">
+        <input type="text" value="Input XML" disabled />
+        <button onclick="validateXML()">RUN</button>
+      </div>
+      <textarea id="xmlInput" placeholder="Paste your XML here..."></textarea>
+    </div>
+
+    <!-- Output XML -->
+    <div class="output-section">
+      <div class="controls">
+        <input type="text" value="Output (cleaned XML)" disabled />
+        <button onclick="saveOutput()">Save</button>
+      </div>
+      <textarea id="xmlOutput" readonly placeholder="Cleaned/Validated XML will appear here..."></textarea>
+    </div>
+  </div>
+
+  <!-- Errors -->
+  <div class="errors" id="errorBox"></div>
+
+</div>
+
+<script>
+  const xmlInputEl = document.getElementById('xmlInput');
+  let undoStack = [];
+  let redoStack = [];
+
+  xmlInputEl.addEventListener('input', () => {
+    undoStack.push(xmlInputEl.value);
+    redoStack = [];
+  });
+
+  function undo() {
+    if (undoStack.length > 0) {
+      redoStack.push(xmlInputEl.value);
+      xmlInputEl.value = undoStack.pop();
+    }
+  }
+
+  function redo() {
+    if (redoStack.length > 0) {
+      undoStack.push(xmlInputEl.value);
+      xmlInputEl.value = redoStack.pop();
+    }
+  }
+
+  function copyInput() {
+    navigator.clipboard.writeText(xmlInputEl.value);
+    alert("Copied!");
+  }
+
+  function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        xmlInputEl.value = e.target.result;
+        undoStack.push(xmlInputEl.value);
+      };
+      reader.readAsText(file);
+    }
+  }
+
+  function saveOutput() {
+    const output = document.getElementById('xmlOutput').value;
+    const blob = new Blob([output], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "cleaned.xml";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function validateXML() {
+    const xmlInput = xmlInputEl.value.trim();
+    const errorBox = document.getElementById('errorBox');
+    const xmlOutput = document.getElementById('xmlOutput');
+
+    errorBox.textContent = '';
+    xmlOutput.value = '';
+
+    if (!xmlInput) {
+      errorBox.textContent = "⚠️ Please enter XML code.";
+      return;
+    }
+
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(xmlInput, "application/xml");
+    const parserErrors = xmlDoc.getElementsByTagName("parsererror");
+
+    if (parserErrors.length > 0) {
+      const errorText = parserErrors[0].textContent;
+      errorBox.textContent = "❌ Invalid XML:\n" + errorText;
+
+      const lineMatch = errorText.match(/at line (\d+)/i);
+      if (lineMatch) {
+        const errorLine = parseInt(lineMatch[1]);
+        highlightErrorLine(errorLine);
+      }
+
+      const cleanedXML = autoCleanXML(xmlInput);
+      const cleanedDoc = parser.parseFromString(cleanedXML, "application/xml");
+      const cleanedErrors = cleanedDoc.getElementsByTagName("parsererror");
+
+      if (cleanedErrors.length === 0) {
+        const serialized = new XMLSerializer().serializeToString(cleanedDoc);
+        xmlOutput.value = formatXML(serialized);
+      } else {
+        xmlOutput.value = "⚠️ Cleaned but still invalid:\n\n" + cleanedXML;
+      }
+    } else {
+      const validXML = new XMLSerializer().serializeToString(xmlDoc);
+      xmlOutput.value = formatXML(validXML);
+    }
+  }
+
+  function highlightErrorLine(lineNumber) {
+    const lines = xmlInputEl.value.split('\n');
+    const highlighted = lines.map((line, index) =>
+      index + 1 === lineNumber
+        ? <div class="highlight-line">${line}</div>
+        : <div>${line}</div>
+    ).join('');
+
+    const highlighter = document.createElement('div');
+    highlighter.innerHTML = highlighted;
+    highlighter.style.fontFamily = 'Consolas, monospace';
+    highlighter.style.whiteSpace = 'pre';
+    highlighter.style.background = '#fdf6e3';
+    highlighter.style.padding = '10px';
+    highlighter.style.border = '1px dashed #000';
+
+    xmlInputEl.style.display = 'none';
+    xmlInputEl.insertAdjacentElement('afterend', highlighter);
+
+    setTimeout(() => {
+      xmlInputEl.style.display = 'block';
+      highlighter.remove();
+    }, 3000);
+  }
+
+  function autoCleanXML(xml) {
+    let cleaned = xml
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/&(?!lt;|gt;|amp;|quot;|apos;)/g, '&amp;')
+      .replace(/[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD]/g, '')
+      .replace(/<[^>]*$/, '')
+      .trim();
+
+    if (!/^<\?xml/.test(cleaned)) {
+      cleaned = '<?xml version="1.0"?>\n' + cleaned;
+    }
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(cleaned, "application/xml");
+    const elements = Array.from(doc.childNodes).filter(n => n.nodeType === 1);
+
+    if (elements.length > 1) {
+      cleaned = cleaned.replace(/<\?xml.*?\?>/, '');
+      cleaned = '<?xml version="1.0"?>\n<root>' + cleaned + '</root>';
+    }
+
+    return cleaned;
+  }
+
+  function formatXML(xml) {
+    const PADDING = '  ';
+    const reg = /(>)(<)(\/*)/g;
+    let formatted = '';
+    let pad = 0;
+
+    xml = xml.replace(reg, '$1\r\n$2$3');
+    xml.split('\r\n').forEach((node) => {
+      let indent = 0;
+      if (node.match(/.+<\/\w[^>]*>$/)) {
+        indent = 0;
+      } else if (node.match(/^<\/\w/)) {
+        if (pad !== 0) pad -= 1;
+      } else if (node.match(/^<\w([^>]*[^/])?>.*$/)) {
+        indent = 1;
+      } else {
+        indent = 0;
+      }
+
+      formatted += PADDING.repeat(pad) + node + '\r\n';
+      pad += indent;
+    });
+
+    return formatted.trim();
+  }
+</script>
+
+</body>
+</html>
