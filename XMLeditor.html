@@ -137,14 +137,13 @@
   };
   const app = firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
-
-  const sessionId = "CallID"; // can come from URL or ZegoCloud call ID
   
   const xmlInputEl = document.getElementById('xmlInput');
   let undoStack = [];
   let redoStack = [];
+  
   const urlParams = new URLSearchParams(window.location.search);
-  const sessionId = urlParams.get('sessionId');
+  const sessionId = urlParams.get('roomId');
   db.collection("sessions").doc(sessionId)
   .onSnapshot(doc => {
     if (doc.exists && doc.data().code !== editor.value) {
