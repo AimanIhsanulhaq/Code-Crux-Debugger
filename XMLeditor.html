@@ -146,9 +146,9 @@
   const sessionId = urlParams.get('roomId');
   db.collection("sessions").doc(sessionId)
   .onSnapshot(doc => {
-    if (doc.exists && doc.data().code !== editor.value) {
+    if (doc.exists && doc.data().code !== xmlInputEl.value) {
       if (confirm("A teammate made changes. Accept?")) {
-        editor.value = doc.data().code;
+        xmlInputEl.value = doc.data().code;
       }
     }
   });
@@ -157,7 +157,7 @@
     undoStack.push(xmlInputEl.value);
     redoStack = [];
     db.collection("sessions").doc(sessionId).set({
-      code: editor.value
+      code: xmlInputEl.value
     });
   });
 
