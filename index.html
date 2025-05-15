@@ -15,6 +15,7 @@
     h2 {
       text-align: center;
       margin-bottom: 20px;
+      font-family: 'Courier New', Courier, monospace;
     }
 
     .wrapper {
@@ -85,40 +86,11 @@
     .highlight-line {
       background-color: yellow !important;
     }
-
-    .editor-wrapper {
-  display: flex;
-  position: relative;
-  height: 300px;
-  overflow: hidden;
-}
-
-.line-numbers {
-  background: #eee;
-  color: #555;
-  padding: 10px 5px;
-  text-align: right;
-  user-select: none;
-  border-right: 1px solid #ccc;
-  font-family: Consolas, monospace;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-#xmlInput {
-  border: none;
-  outline: none;
-  overflow: auto;
-  flex: 1;
-  height: 100%;
-  line-height: 1.5;
-}
-
   </style>
 </head>
 <body>
 
-<h2>XML Debugger</h2>
+<h2>Debugger</h2>
 
 <div class="wrapper">
 
@@ -137,10 +109,7 @@
         <input type="text" value="Input XML" disabled />
         <button onclick="validateXML()">RUN</button>
       </div>
-      <div class="editor-wrapper">
-        <div class="line-numbers" id="lineNumbers"></div>
-        <textarea id="xmlInput" placeholder="Paste your XML here..." onscroll="syncScroll()" oninput="updateLineNumbers()"></textarea>
-      </div>      
+      <textarea id="xmlInput" placeholder="Paste your XML here..."></textarea>
     </div>
 
     <!-- Output XML -->
@@ -158,34 +127,38 @@
 
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore.js"></script>
 <script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyAoOyz9ll0pvZj2Sw7G9oqTu1ZDpgiruPw",
+    authDomain: "me1st-flmcdw.firebaseapp.com",
+    projectId: "me1st-flmcdw",
+  };
+  const app = firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  
   const xmlInputEl = document.getElementById('xmlInput');
   let undoStack = [];
   let redoStack = [];
-
-  const lineNumbersEl = document.getElementById('lineNumbers');
-
-function updateLineNumbers() {
-  const lines = xmlInputEl.value.split('\n').length;
-  let lineHtml = '';
-  for (let i = 1; i <= lines; i++) {
-    lineHtml += i + '<br>';
-  }
-  lineNumbersEl.innerHTML = lineHtml;
-}
-
-// Sync scrolling between textarea and line numbers
-function syncScroll() {
-  lineNumbersEl.scrollTop = xmlInputEl.scrollTop;
-}
-
-// Initial line numbers
-updateLineNumbers();
-
-
+  
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionId = urlParams.get('roomId');
+  db.collection("sessions").doc(sessionId)
+  .onSnapshot(doc => {
+    if (doc.exists && doc.data().code !== editor.value) {
+      if (confirm("A teammate made changes. Accept?")) {
+        editor.value = doc.data().code;
+      }
+    }
+  });
+  
   xmlInputEl.addEventListener('input', () => {
     undoStack.push(xmlInputEl.value);
     redoStack = [];
+    db.collection("sessions").doc(sessionId).set({
+      code: editor.value
+    });
   });
 
   function undo() {
@@ -217,7 +190,6 @@ updateLineNumbers();
       };
       reader.readAsText(file);
     }
-    updateLineNumbers();
   }
 
   function saveOutput() {
@@ -275,20 +247,29 @@ updateLineNumbers();
   }
 
   function highlightErrorLine(lineNumber) {
-  const lines = xmlInputEl.value.split('\n');
-  let start = 0;
+    const lines = xmlInputEl.value.split('\n');
+    const highlighted = lines.map((line, index) =>
+      index + 1 === lineNumber
+        ? <div class="highlight-line">${line}</div>
+        : <div>${line}</div>
+    ).join('');
 
-  for (let i = 0; i < lineNumber - 1; i++) {
-    start += lines[i].length + 1; // +1 for newline
+    const highlighter = document.createElement('div');
+    highlighter.innerHTML = highlighted;
+    highlighter.style.fontFamily = 'Consolas, monospace';
+    highlighter.style.whiteSpace = 'pre';
+    highlighter.style.background = '#fdf6e3';
+    highlighter.style.padding = '10px';
+    highlighter.style.border = '1px dashed #000';
+
+    xmlInputEl.style.display = 'none';
+    xmlInputEl.insertAdjacentElement('afterend', highlighter);
+
+    setTimeout(() => {
+      xmlInputEl.style.display = 'block';
+      highlighter.remove();
+    }, 3000);
   }
-
-  xmlInputEl.focus();
-  xmlInputEl.setSelectionRange(start, start + lines[lineNumber - 1].length);
-
-  // Optional: visually scroll to line
-  const lineHeight = parseFloat(getComputedStyle(xmlInputEl).lineHeight);
-  xmlInputEl.scrollTop = (lineNumber - 1) * lineHeight;
-}
 
   function autoCleanXML(xml) {
     let cleaned = xml
